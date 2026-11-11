@@ -421,15 +421,21 @@ def _extract_command_names(help_output: str) -> list[str]:
             continue
         if in_commands:
             stripped = line.strip()
-            if stripped.startswith("╰") or stripped.startswith("`"):
+            if stripped.startswith(("╰", "└", "`", "+")):
                 break
-            # Lines look like:  "│ help        Show help for a command. │"
-            # Strip the rich box characters.
-            inner = stripped.strip("│").strip()
-            if not inner:
-                continue
-            tok = inner.split()[0]
-            names.append(tok)
+            # Command rows look like: "│ help        Show help for a command. │"
+            # A long description wraps onto its own row ("│           VM  │"),
+            # where the command column is blank -- that must not become a name,
+            # which is what happens at narrow terminal widths (Windows console).
+            if (
+                stripped.startswith(("│", "|"))
+                and len(stripped) > 2
+                and stripped[1] == " "
+                and stripped[2] != " "
+            ):
+                inner = stripped.strip("│|").strip()
+                if inner:
+                    names.append(inner.split()[0])
     return names
 
 

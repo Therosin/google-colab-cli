@@ -471,6 +471,11 @@ def _proxy_command(session: SessionState, identity: Optional[str], mode: str) ->
         argv += ["--identity", identity]
     argv += ["--colab-internal-mode", mode]
     if sys.platform == "win32":
+        # Windows OpenSSH hands the ProxyCommand to CreateProcessW (no shell),
+        # while Git for Windows' ssh runs it through /bin/sh. Double quotes
+        # parse the same in both, and forward slashes in the interpreter path
+        # stop sh from eating the backslashes as escapes.
+        argv[0] = argv[0].replace("\\", "/")
         return subprocess.list2cmdline(argv)
     return shlex.join(argv)
 
@@ -630,7 +635,8 @@ def _install_rm_signal_handlers(do_rm: Callable[[], None]) -> None:
     stdin EOF); Python's default SIGHUP action would terminate us WITHOUT
     running teardown, leaking the runtime. Convert
     SIGHUP/SIGTERM/SIGINT into ``do_rm`` + ``os._exit`` so ``--rm`` teardown
-    always runs.
+    always runs. ``SIGBREAK`` is included where the platform defines it, so a
+    Windows Ctrl-Break also tears the runtime down.
 
     Args:
       do_rm: Idempotent teardown callback to run before exiting.
@@ -640,7 +646,7 @@ def _install_rm_signal_handlers(do_rm: Callable[[], None]) -> None:
         do_rm()
         os._exit(0)
 
-    for name in ("SIGHUP", "SIGTERM", "SIGINT"):
+    for name in ("SIGHUP", "SIGTERM", "SIGINT", "SIGBREAK"):
         sig = getattr(signal, name, None)
         if sig is None:
             continue

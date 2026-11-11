@@ -319,7 +319,7 @@ def test_proxy_mode_signal_handler_installation(
         registered = {c.args[0] for c in sigmock.call_args_list}
         expected = {
             getattr(_signal, name)
-            for name in ("SIGHUP", "SIGTERM", "SIGINT")
+            for name in ("SIGHUP", "SIGTERM", "SIGINT", "SIGBREAK")
             if hasattr(_signal, name)
         }
         assert expected <= registered

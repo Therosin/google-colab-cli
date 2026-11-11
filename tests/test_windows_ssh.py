@@ -159,7 +159,7 @@ def test_rm_handlers_register_available_signals(mocker):
     ssh._install_rm_signal_handlers(mocker.Mock())
     expected = {
         getattr(signal, name)
-        for name in ("SIGHUP", "SIGTERM", "SIGINT")
+        for name in ("SIGHUP", "SIGTERM", "SIGINT", "SIGBREAK")
         if hasattr(signal, name)
     }
     assert {call.args[0] for call in register.call_args_list} == expected

@@ -9,6 +9,7 @@ log:
 2026-10-24: `--timeout` for `colab exec` (and `colab run`) is now an idle limit: execution fails only after that many seconds without output, so code that keeps printing is never cut off, and `--timeout 0` means no limit. On 0.8.0/0.9.0 the old deadline was never enforced, so code that is silent for longer than `--timeout` now fails where it used to complete. `colab repl` and `colab install`, which pass no timeout, wait until execution finishes, or until the kernel dies or restarts. None of them busy-loop while waiting. `colab auth` and `colab drivemount` are unchanged. See #183.
 
 2026-10-29: Removed the `colab console` subcommand and its `/colab/tty` transport (`console.py`, its tests, and `integration/repro_piped_console/`). Use `colab ssh -s NAME` for an interactive shell and `colab ssh -s NAME -- CMD` for one-shot commands, or pipe `!`-prefixed shell commands to `colab exec` where ssh can't work.
+2026-11-11: `colab repl` falls back to `prompt_toolkit`'s `DummyOutput` when no console screen buffer is available (headless Windows, CI, redirected stdin), instead of failing at startup with `NoConsoleScreenBufferError`.
 ---
 
 # Design: Execution and Interactive Interaction (`repl`, `exec`)

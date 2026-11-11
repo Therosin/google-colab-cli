@@ -1,5 +1,6 @@
 ---
 log:
+2026-11-11: Windows ProxyCommand now emits the interpreter path with forward slashes (Git for Windows' `ssh` runs it through `/bin/sh`, where `C:\...` backslashes act as escapes; native OpenSSH accepts either separator), and `--rm` teardown also registers `SIGBREAK` where the platform defines it. Added `test_proxy_command_windows_quoting`.
 2026-11-09: `--identity/-i` now accepts either a `.pub` public key or a private key path: `_resolve_pubkey` reads the `.pub` file directly when present before falling back to `_pubkey_from_identity` (`ssh-keygen -y -f`), and `_ssh_base_args` strips `.pub` for `ssh -i` when the sibling private key exists on disk.
 2026-10-29: Removed the `colab console` subcommand, so `colab ssh` is the interactive shell on the runtime. Dropped console behavior from the Windows validation caveat.
 2026-10-29: Added `colab ssh [-s NAME] -- CMD`, which runs one command on an existing session and exits with its status (a PTY only when stdin and stdout are terminals; neither it nor its ProxyCommand child creates a runtime). Its handshake carries `ssh-mode-cmd`, and the update banner is skipped for `ssh` when stdout is not a terminal. Added `tests/test_ssh_cmd.py`.
