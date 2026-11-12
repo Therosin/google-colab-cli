@@ -54,13 +54,28 @@ class ColabREPL:
         def _(event):
             event.current_buffer.insert_text("\n")
 
-        self.session = PromptSession(
-            history=InMemoryHistory(),
-            lexer=PygmentsLexer(PythonLexer),
-            include_default_pygments_style=False,
-            key_bindings=self.kb,
-            multiline=True,
-        )
+        try:
+            self.session = PromptSession(
+                history=InMemoryHistory(),
+                lexer=PygmentsLexer(PythonLexer),
+                include_default_pygments_style=False,
+                key_bindings=self.kb,
+                multiline=True,
+            )
+        except Exception:
+            # Headless Windows (CI, redirected stdin) has no console screen
+            # buffer, and prompt_toolkit refuses to attach to the terminal
+            # there. Fall back to a no-op output; the REPL itself still works.
+            from prompt_toolkit.output import DummyOutput
+
+            self.session = PromptSession(
+                history=InMemoryHistory(),
+                lexer=PygmentsLexer(PythonLexer),
+                include_default_pygments_style=False,
+                key_bindings=self.kb,
+                multiline=True,
+                output=DummyOutput(),
+            )
         self.style = Style.from_dict(
             {
                 "prompt": "bold blue",

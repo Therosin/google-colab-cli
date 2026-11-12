@@ -114,11 +114,13 @@ def run_automation(
                 state.history.log_event(s.name, "drive_auth_needed", {"uri": uri})
                 sys.stdout.write("Press Enter after you have granted access... ")
                 sys.stdout.flush()
+                # Read the terminal even when stdin is piped.
+                tty_path = "CONIN$" if sys.platform == "win32" else "/dev/tty"
                 try:
-                    with open("/dev/tty") as tty:
+                    with open(tty_path) as tty:
                         tty.readline()
-                except (FileNotFoundError, OSError, IOError):
-                    # Windows has no /dev/tty; fall back to stdin.
+                except OSError:
+                    # No controlling terminal; fall back to stdin.
                     try:
                         sys.stdin.readline()
                     except Exception:

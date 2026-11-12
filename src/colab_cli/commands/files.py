@@ -154,9 +154,12 @@ def edit(
 
     _, ext = os.path.splitext(remote_path)
 
-    with tempfile.NamedTemporaryFile(suffix=ext) as tf:
+    # Both the download and the editor open this path by name, which Windows
+    # refuses while the handle is still open -- so close it before use.
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tf:
         local_path = tf.name
 
+    try:
         try:
             contents.download(remote_path, local_path)
         except Exception:
@@ -179,6 +182,15 @@ def edit(
             typer.echo(f"[colab] Edited and uploaded '{remote_path}'")
         else:
             typer.echo(f"[colab] No changes made to '{remote_path}'")
+    finally:
+        try:
+            os.unlink(local_path)
+        except OSError as e:
+            # Leave the path visible: it still holds this file's contents.
+            typer.echo(
+                f"[colab] Could not remove temporary file '{local_path}': {e}",
+                err=True,
+            )
 
 
 def register(app: typer.Typer):

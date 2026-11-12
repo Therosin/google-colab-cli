@@ -421,15 +421,21 @@ def _extract_command_names(help_output: str) -> list[str]:
             continue
         if in_commands:
             stripped = line.strip()
-            if stripped.startswith("╰") or stripped.startswith("`"):
+            if stripped.startswith(("╰", "└", "`", "+")):
                 break
-            # Lines look like:  "│ help        Show help for a command. │"
-            # Strip the rich box characters.
-            inner = stripped.strip("│").strip()
-            if not inner:
-                continue
-            tok = inner.split()[0]
-            names.append(tok)
+            # Command rows look like: "│ help        Show help for a command. │"
+            # A long description wraps onto its own row ("│           VM  │"),
+            # where the command column is blank -- that must not become a name,
+            # which is what happens at narrow terminal widths (Windows console).
+            if (
+                stripped.startswith(("│", "|"))
+                and len(stripped) > 2
+                and stripped[1] == " "
+                and stripped[2] != " "
+            ):
+                inner = stripped.strip("│|").strip()
+                if inner:
+                    names.append(inner.split()[0])
     return names
 
 
@@ -595,6 +601,23 @@ def test_cli_edit_with_changes(
     mock_contents_class.return_value.download.assert_called_once()
     mock_contents_class.return_value.upload.assert_called_once()
     assert "Edited and uploaded 'remote.txt'" in result.output
+
+
+@patch("colab_cli.commands.files.ContentsClient")
+@patch("click.edit")
+def test_cli_edit_warns_when_temp_file_survives(
+    mock_edit, mock_contents_class, mock_store, mock_common_state, mocker
+):
+    """A temp file that cannot be removed still holds the file's contents."""
+    mock_store.get.return_value = MagicMock()
+    mock_common_state.resolve_session.return_value = "s1"
+    mock_edit.side_effect = lambda filename, **_: None
+    mocker.patch("os.unlink", side_effect=PermissionError("in use"))
+
+    result = runner.invoke(app, ["edit", "-s", "s1", "remote.txt"])
+
+    assert result.exit_code == 0
+    assert "Could not remove temporary file" in result.stderr
 
 
 def _make_400_error(message="Bad Request"):

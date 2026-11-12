@@ -475,6 +475,35 @@ def test_proxy_command_round_trips_through_the_shell(name, identity, mocker):
         assert argv[7:] == mode_args
 
 
+def test_proxy_command_windows_quoting(mocker):
+    """Windows must get a command line both possible ssh parents can parse.
+
+    Native OpenSSH hands ProxyCommand to CreateProcessW with no shell, while
+    Git for Windows' ssh runs it through /bin/sh -- where the backslashes of a
+    ``C:\\...`` path are escapes, quoted or not. Forward slashes satisfy both;
+    a session name stays verbatim because it is not a path.
+    """
+    mocker.patch.object(ssh_module.sys, "platform", "win32")
+    identity = r"C:\SSH keys\id_ed25519"
+    cmd = ssh_module._proxy_command(_make_session(name=r"a\b"), identity, "interactive")
+    expected = subprocess.list2cmdline(
+        [
+            sys.executable.replace("\\", "/"),
+            "-m",
+            "colab_cli.cli",
+            "ssh",
+            "--proxy-mode",
+            "-s",
+            r"a\b",
+            "--identity",
+            "C:/SSH keys/id_ed25519",
+            "--colab-internal-mode",
+            "interactive",
+        ]
+    )
+    assert cmd == expected
+
+
 # --- session resolution ------------------------------------------------------
 
 

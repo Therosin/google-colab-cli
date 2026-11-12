@@ -75,7 +75,8 @@ def test_proxy_command_launches_with_literal_arguments(
     )
     expected = ["ssh", "--proxy-mode", "-s", name]
     if identity:
-        expected.extend(["--identity", identity])
+        # Path arguments are emitted with forward slashes so /bin/sh keeps them.
+        expected.extend(["--identity", identity.replace("\\", "/")])
     expected.extend(["--colab-internal-mode", "interactive"])
     assert json.loads(result.stdout) == expected
 
@@ -128,7 +129,7 @@ def test_windows_openssh_starts_proxy(tmp_path, windows_python, monkeypatch):
         "-s",
         "session with spaces",
         "--identity",
-        "C:\\SSH keys\\id_ed25519",
+        "C:/SSH keys/id_ed25519",
         "--colab-internal-mode",
         "interactive",
     ]
@@ -159,7 +160,7 @@ def test_rm_handlers_register_available_signals(mocker):
     ssh._install_rm_signal_handlers(mocker.Mock())
     expected = {
         getattr(signal, name)
-        for name in ("SIGHUP", "SIGTERM", "SIGINT")
+        for name in ("SIGHUP", "SIGTERM", "SIGINT", "SIGBREAK")
         if hasattr(signal, name)
     }
     assert {call.args[0] for call in register.call_args_list} == expected
