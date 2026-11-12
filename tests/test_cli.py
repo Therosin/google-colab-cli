@@ -692,3 +692,79 @@ def test_cli_new_412_without_accelerator_shows_friendly_error(mock_client, mock_
     assert result.exit_code != 0
     assert "precondition" in result.output.lower()
     mock_store.add.assert_not_called()
+
+
+@pytest.mark.parametrize("outcome", ["unchanged", "changed", "missing", "editor-error", "upload-error"])
+def test_edit_closes_tempfile_before_reopening_and_always_cleans_up(
+    mocker, mock_common_state, tmp_path, outcome
+):
+    import tempfile
+    from pathlib import Path
+    from colab_cli.commands import files
+
+    mock_common_state.resolve_session.return_value = "s1"
+    contents = mocker.patch.object(files, "ContentsClient").return_value
+    real_factory = tempfile.NamedTemporaryFile
+    handles = []
+
+    def create_temp(**kwargs):
+        handle = real_factory(dir=tmp_path, **kwargs)
+        handles.append(handle)
+        return handle
+
+    mocker.patch.object(files.tempfile, "NamedTemporaryFile", side_effect=create_temp)
+
+    def download(remote, local):
+        assert handles[0].closed
+        assert Path(local).suffix == ".py"
+        if outcome == "missing":
+            raise FileNotFoundError(remote)
+        Path(local).write_text("original", encoding="utf-8")
+
+    def edit(*, filename):
+        assert handles[0].closed
+        assert Path(filename).read_text(encoding="utf-8") == (
+            "" if outcome == "missing" else "original"
+        )
+        if outcome == "editor-error":
+            raise RuntimeError("editor failed")
+        if outcome != "unchanged":
+            Path(filename).write_text("edited", encoding="utf-8")
+
+    def upload(local, remote):
+        assert Path(local).read_text(encoding="utf-8") == "edited"
+        assert remote == "content/example.py"
+        if outcome == "upload-error":
+            raise RuntimeError("upload failed")
+
+    contents.download.side_effect = download
+    contents.upload.side_effect = upload
+    mocker.patch.object(files.click, "edit", side_effect=edit)
+    result = runner.invoke(app, ["edit", "-s", "s1", "content/example.py"])
+
+    assert len(handles) == 1
+    assert not Path(handles[0].name).exists()
+    assert list(tmp_path.iterdir()) == []
+    if outcome.endswith("error"):
+        assert result.exit_code != 0
+        assert str(result.exception) == outcome.replace("-", " ").replace("error", "failed")
+    else:
+        assert result.exit_code == 0, result.exception
+    if outcome in ("unchanged", "editor-error"):
+        contents.upload.assert_not_called()
+    else:
+        contents.upload.assert_called_once_with(handles[0].name, "content/example.py")
+
+
+@pytest.mark.parametrize("border, end", [("│", "╰───╯"), ("|", "+---+"), ("│", "└───┘")])
+def test_help_parser_ignores_wrapped_descriptions_and_stops_at_border(border, end):
+    help_text = "\n".join([
+        "Usage: colab", "╭─ Commands ─╮",
+        f"{border} edit   Edit a file {border}",
+        f"{border} run    Run code on a {border}",
+        f"{border}        VM {border}",
+        f"{border}                     {border}",
+        f"{border} ssh    Open shell {border}", end,
+        f"{border} bogus  Outside commands {border}",
+    ])
+    assert _extract_command_names(help_text) == ["edit", "run", "ssh"]

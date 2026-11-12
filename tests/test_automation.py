@@ -148,3 +148,60 @@ def test_show_drive_auth_url_headless_still_prints(mock_open, capsys):
     out = capsys.readouterr().out
     assert url in out
     assert "Opened the authorization page" not in out
+
+
+@pytest.mark.parametrize("platform, terminal", [("win32", "CONIN$"), ("linux", "/dev/tty")])
+@pytest.mark.parametrize("failure", [None, "open", "read", "stdin"])
+def test_drive_auth_reads_controlling_terminal_before_stdin(
+    mocker, mock_common_state, mock_session, platform, terminal, failure
+):
+    import json
+    from colab_cli.commands import automation
+
+    mock_common_state.store.get.return_value = mock_session
+    runtime = mocker.patch.object(automation, "ColabRuntime").return_value
+    runtime.execute_code.return_value = []
+    creds = mocker.patch.object(automation, "get_credentials").return_value
+    creds.request.side_effect = [
+        mocker.Mock(response=None, status_code=200, text=json.dumps({"token": "test-token"})),
+        mocker.Mock(response=None, status_code=200, text=json.dumps({
+            "success": False, "unauthorized_redirect_uri": "https://example.test/auth"
+        })),
+        mocker.Mock(response=None, status_code=200, text="{}"),
+    ]
+    show_url = mocker.patch.object(automation, "show_drive_auth_url")
+    automation.run_automation("test-session", "drivemount", "drive.mount()")
+    mocker.patch.object(automation.sys, "platform", platform)
+    opened = mocker.patch("builtins.open", mocker.mock_open(read_data="\n"))
+    stdin = mocker.patch.object(automation.sys, "stdin")
+    fallback_input = mocker.patch("builtins.input", return_value="")
+    if failure in ("open", "stdin"):
+        opened.side_effect = OSError("no terminal")
+    elif failure == "read":
+        opened.return_value.readline.side_effect = OSError("terminal disconnected")
+    if failure == "stdin":
+        stdin.readline.side_effect = OSError("stdin unavailable")
+    wsclient = mocker.Mock()
+    wsclient.session.msg.return_value = {}
+    message = {
+        "content": {"request": {"authType": "dfs_ephemeral"}},
+        "metadata": {"colab_msg_id": "msg-1"},
+        "header": {"msg_id": "parent-1"},
+    }
+    assert runtime.colab_request_hook(message, wsclient) is True
+    opened.assert_called_once_with(terminal)
+    show_url.assert_called_once_with("https://example.test/auth")
+    if failure is None:
+        opened.return_value.readline.assert_called_once_with()
+        stdin.readline.assert_not_called()
+    else:
+        stdin.readline.assert_called_once_with()
+    if failure == "stdin":
+        fallback_input.assert_called_once_with()
+    else:
+        fallback_input.assert_not_called()
+    assert creds.request.call_count == 3
+    wsclient.session.msg.assert_called_once_with(
+        "input_reply", {"value": {"type": "colab_reply", "colab_msg_id": "msg-1"}}
+    )
+    wsclient.stdin_channel.send.assert_called_once_with(wsclient.session.msg.return_value)

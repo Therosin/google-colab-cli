@@ -581,3 +581,41 @@ def test_install_flag_propagates_pip_failure(
 
     result = runner.invoke(app, ["update", "--install"])
     assert result.exit_code == 2
+
+
+@pytest.mark.parametrize("executable, uses_uv", [
+    (r"C:\Users\Test User\AppData\Roaming\uv\tools\colab\Scripts\python.exe", True),
+    ("C:/Users/Test User/uv/tools/colab/Scripts/python.exe", True),
+    (r"C:\Users\Test User\uv/tools\colab\python.exe", True),
+    ("/home/user/.local/share/uv/tools/colab/bin/python", True),
+    (r"C:\Python312\python.exe", False),
+    (r"C:\uv\tools-other\python.exe", False),
+    (r"C:\uv\python\cpython\python.exe", False),
+])
+def test_install_command_and_execution_agree_on_path(mocker, executable, uses_uv):
+    from colab_cli import auto_update
+
+    mocker.patch("sys.executable", executable)
+    mocker.patch.object(auto_update, "is_self_install_supported", return_value=True)
+    run = mocker.patch.object(auto_update.subprocess, "run")
+    run.return_value.returncode = 0
+
+    expected_hint = (
+        "uv tool install -U google-colab-cli" if uses_uv
+        else "pip install --upgrade google-colab-cli"
+    )
+    assert auto_update._get_install_command() == expected_hint
+    auto_update.self_install()
+    expected = (
+        ["uv", "tool", "install", "-U", "google-colab-cli"] if uses_uv
+        else [executable, "-m", "pip", "install", "-U", "google-colab-cli"]
+    )
+    run.assert_called_once_with(expected)
+
+
+def test_windows_uv_hint_respects_self_install_support(mocker):
+    from colab_cli import auto_update
+
+    mocker.patch("sys.executable", r"C:\uv\tools\colab\python.exe")
+    mocker.patch.object(auto_update, "is_self_install_supported", return_value=False)
+    assert auto_update._get_install_command() == "pip install --upgrade google-colab-cli"
