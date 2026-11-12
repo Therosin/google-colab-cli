@@ -185,8 +185,12 @@ def edit(
     finally:
         try:
             os.unlink(local_path)
-        except OSError:
-            pass
+        except OSError as e:
+            # Leave the path visible: it still holds this file's contents.
+            typer.echo(
+                f"[colab] Could not remove temporary file '{local_path}': {e}",
+                err=True,
+            )
 
 
 def register(app: typer.Typer):

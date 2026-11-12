@@ -472,10 +472,12 @@ def _proxy_command(session: SessionState, identity: Optional[str], mode: str) ->
     argv += ["--colab-internal-mode", mode]
     if sys.platform == "win32":
         # Windows OpenSSH hands the ProxyCommand to CreateProcessW (no shell),
-        # while Git for Windows' ssh runs it through /bin/sh. Double quotes
-        # parse the same in both, and forward slashes in the interpreter path
-        # stop sh from eating the backslashes as escapes.
-        argv[0] = argv[0].replace("\\", "/")
+        # while Git for Windows' ssh runs it through /bin/sh, which eats
+        # backslashes as escapes. Forward slashes satisfy both, but only the
+        # path arguments may be rewritten -- a session name must stay verbatim.
+        for i, arg in enumerate(argv):
+            if i == 0 or argv[i - 1] in ("--config", "--identity"):
+                argv[i] = arg.replace("\\", "/")
         return subprocess.list2cmdline(argv)
     return shlex.join(argv)
 

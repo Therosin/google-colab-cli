@@ -480,10 +480,12 @@ def test_proxy_command_windows_quoting(mocker):
 
     Native OpenSSH hands ProxyCommand to CreateProcessW with no shell, while
     Git for Windows' ssh runs it through /bin/sh -- where the backslashes of a
-    ``C:\\...`` interpreter path are escapes. Forward slashes satisfy both.
+    ``C:\\...`` path are escapes, quoted or not. Forward slashes satisfy both;
+    a session name stays verbatim because it is not a path.
     """
     mocker.patch.object(ssh_module.sys, "platform", "win32")
-    cmd = ssh_module._proxy_command(_make_session(name="colab"), None, "interactive")
+    identity = r"C:\SSH keys\id_ed25519"
+    cmd = ssh_module._proxy_command(_make_session(name=r"a\b"), identity, "interactive")
     expected = subprocess.list2cmdline(
         [
             sys.executable.replace("\\", "/"),
@@ -492,7 +494,9 @@ def test_proxy_command_windows_quoting(mocker):
             "ssh",
             "--proxy-mode",
             "-s",
-            "colab",
+            r"a\b",
+            "--identity",
+            "C:/SSH keys/id_ed25519",
             "--colab-internal-mode",
             "interactive",
         ]

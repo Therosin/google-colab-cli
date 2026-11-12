@@ -603,6 +603,23 @@ def test_cli_edit_with_changes(
     assert "Edited and uploaded 'remote.txt'" in result.output
 
 
+@patch("colab_cli.commands.files.ContentsClient")
+@patch("click.edit")
+def test_cli_edit_warns_when_temp_file_survives(
+    mock_edit, mock_contents_class, mock_store, mock_common_state, mocker
+):
+    """A temp file that cannot be removed still holds the file's contents."""
+    mock_store.get.return_value = MagicMock()
+    mock_common_state.resolve_session.return_value = "s1"
+    mock_edit.side_effect = lambda filename, **_: None
+    mocker.patch("os.unlink", side_effect=PermissionError("in use"))
+
+    result = runner.invoke(app, ["edit", "-s", "s1", "remote.txt"])
+
+    assert result.exit_code == 0
+    assert "Could not remove temporary file" in result.stderr
+
+
 def _make_400_error(message="Bad Request"):
     """Build a ColabRequestError shaped like a 400 from the assign endpoint."""
     response = MagicMock()

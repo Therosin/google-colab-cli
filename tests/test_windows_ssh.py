@@ -75,7 +75,8 @@ def test_proxy_command_launches_with_literal_arguments(
     )
     expected = ["ssh", "--proxy-mode", "-s", name]
     if identity:
-        expected.extend(["--identity", identity])
+        # Path arguments are emitted with forward slashes so /bin/sh keeps them.
+        expected.extend(["--identity", identity.replace("\\", "/")])
     expected.extend(["--colab-internal-mode", "interactive"])
     assert json.loads(result.stdout) == expected
 
@@ -128,7 +129,7 @@ def test_windows_openssh_starts_proxy(tmp_path, windows_python, monkeypatch):
         "-s",
         "session with spaces",
         "--identity",
-        "C:\\SSH keys\\id_ed25519",
+        "C:/SSH keys/id_ed25519",
         "--colab-internal-mode",
         "interactive",
     ]

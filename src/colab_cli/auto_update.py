@@ -133,13 +133,21 @@ def announce_upgrade(
 # ---------- Orchestration -----------------------------------------------
 
 
-def _get_install_command() -> str:
-    """Return the recommended installation command based on the environment."""
+def _is_uv_managed_install() -> bool:
+    """Return True when this interpreter lives in a ``uv tool`` install.
+
+    Independent of `is_self_install_supported()`: the upgrade *hint* must name
+    the right tool on every platform, even where `--install` is unavailable
+    (Windows). Windows paths need normalizing because they use `\\`.
+    """
     import sys
 
-    if is_self_install_supported() and "/uv/tools/" in sys.executable.replace(
-        "\\", "/"
-    ):
+    return "/uv/tools/" in sys.executable.replace("\\", "/")
+
+
+def _get_install_command() -> str:
+    """Return the recommended installation command based on the environment."""
+    if _is_uv_managed_install():
         return f"uv tool install -U {PYPI_PACKAGE_NAME}"
     return f"pip install --upgrade {PYPI_PACKAGE_NAME}"
 
@@ -237,9 +245,8 @@ def self_install() -> None:
     """Upgrade the CLI in place, detecting uv vs pip."""
     import sys
 
-    # If the executable path contains "/uv/", we assume it was installed via
-    # `uv tool install` and use `uv` to upgrade it.
-    if "/uv/tools/" in sys.executable.replace("\\", "/"):
+    # If the executable lives in a uv tool install, upgrade through `uv`.
+    if _is_uv_managed_install():
         cmd = ["uv", "tool", "install", "-U", PYPI_PACKAGE_NAME]
     else:
         cmd = [sys.executable, "-m", "pip", "install", "-U", PYPI_PACKAGE_NAME]
