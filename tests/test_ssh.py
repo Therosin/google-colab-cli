@@ -685,3 +685,43 @@ def test_proxy_command_keeps_global_options(
         *[sys.executable, "-m", "colab_cli.cli", *global_args, "ssh"],
         *["--proxy-mode", "-s", "s", "--colab-internal-mode", "interactive"],
     ]
+
+
+@pytest.mark.parametrize("mode", ["interactive", "cmd", "proxy"])
+def test_windows_proxy_normalizes_real_windows_interpreter_path(mocker, mode):
+    mocker.patch.object(ssh_module.sys, "platform", "win32")
+    mocker.patch.object(ssh_module.sys, "executable", r"C:\Program Files\Python312\python.exe")
+    identity = r"C:\Users\Test User\.ssh\id_ed25519"
+    command = ssh_module._proxy_command(_make_session(name="session with spaces"), identity, mode)
+    # Pin the externally visible command line, including preserved identity separators.
+    assert command == (
+        '"C:/Program Files/Python312/python.exe" -m colab_cli.cli ssh --proxy-mode '
+        '-s "session with spaces" --identity "C:\\Users\\Test User\\.ssh\\id_ed25519" '
+        f'--colab-internal-mode {mode}'
+    )
+
+
+def test_sigbreak_handler_tears_down_before_exiting(mocker):
+    import signal
+
+    mocker.patch.object(signal, "SIGBREAK", 999, create=True)
+    register = mocker.patch.object(signal, "signal")
+    calls = mocker.Mock()
+    do_rm = calls.teardown
+    mocker.patch.object(ssh_module.os, "_exit", calls.exit)
+    ssh_module._install_rm_signal_handlers(do_rm)
+    handler = next(c.args[1] for c in register.call_args_list if c.args[0] == 999)
+    handler(999, None)
+    assert calls.mock_calls == [mocker.call.teardown(), mocker.call.exit(0)]
+
+
+@pytest.mark.parametrize("error", [ValueError, OSError])
+def test_sigbreak_registration_failure_is_tolerated(mocker, error):
+    import signal
+
+    mocker.patch.object(signal, "SIGBREAK", 999, create=True)
+    register = mocker.patch.object(signal, "signal", side_effect=error("unavailable"))
+    teardown = mocker.Mock()
+    ssh_module._install_rm_signal_handlers(teardown)
+    assert any(c.args[0] == 999 for c in register.call_args_list)
+    teardown.assert_not_called()

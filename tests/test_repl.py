@@ -266,3 +266,56 @@ def test_repl_key_bindings(mocker):
     mock_event = MagicMock()
     repl_inst.kb.get_bindings_for_keys(("c-j",))[0].handler(mock_event)
     mock_event.current_buffer.insert_text.assert_called_with("\n")
+
+
+def test_repl_retries_with_dummy_output_and_remains_usable(mocker):
+    from prompt_toolkit.history import InMemoryHistory
+    from prompt_toolkit.output import DummyOutput
+    from prompt_toolkit.lexers import PygmentsLexer
+
+    session = mocker.Mock()
+    session.prompt.side_effect = ["print(1)", EOFError()]
+    factory = mocker.patch(
+        "colab_cli.repl.PromptSession",
+        side_effect=[RuntimeError("No console screen buffer"), session],
+    )
+    runtime = mocker.Mock()
+    runtime.execute_code.return_value = []
+    repl = ColabREPL(runtime)
+
+    assert factory.call_count == 2
+    initial = factory.call_args_list[0].kwargs
+    fallback = factory.call_args_list[1].kwargs
+    assert "output" not in initial
+    assert isinstance(fallback["output"], DummyOutput)
+    assert isinstance(fallback["history"], InMemoryHistory)
+    assert isinstance(fallback["lexer"], PygmentsLexer)
+    assert fallback["key_bindings"] is repl.kb
+    assert fallback["multiline"] is True
+    assert fallback["include_default_pygments_style"] is False
+    assert repl.session is session
+    repl.run()
+    runtime.execute_code.assert_called_once_with("print(1)", output_hook=ANY)
+    display = mocker.patch.object(repl, "display_output")
+    runtime.execute_code.call_args.kwargs["output_hook"]({"text": "1"})
+    display.assert_called_once_with({"text": "1"})
+    runtime.stop.assert_called_once()
+
+
+def test_repl_normal_console_does_not_retry(mocker):
+    factory = mocker.patch("colab_cli.repl.PromptSession")
+    repl = ColabREPL(mocker.Mock())
+    factory.assert_called_once()
+    assert "output" not in factory.call_args.kwargs
+    assert repl.session is factory.return_value
+
+
+def test_repl_fallback_failure_propagates_without_retry_loop(mocker):
+    error = RuntimeError("fallback failed")
+    factory = mocker.patch(
+        "colab_cli.repl.PromptSession", side_effect=[RuntimeError("console"), error]
+    )
+    with pytest.raises(RuntimeError, match="fallback failed") as caught:
+        ColabREPL(mocker.Mock())
+    assert caught.value is error
+    assert factory.call_count == 2
